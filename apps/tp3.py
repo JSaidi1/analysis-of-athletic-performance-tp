@@ -1,5 +1,6 @@
 from pyspark.sql import SparkSession, Window
-from pyspark.sql.functions import col, count, when, abs as abs_spark, coalesce, to_date, regexp_replace, trim, initcap
+from pyspark.sql.functions import col, count, when, abs as abs_spark, coalesce, to_date, regexp_replace, trim, initcap, \
+    row_number, first, lit
 
 print("=========== Initialisation ===========")
 spark = SparkSession.builder \
@@ -108,4 +109,21 @@ df_cleaned = (
     )
 )
 df_cleaned.show()
+
+print("=========== Partie 2 : Analyse avec Window Functions ===========")
+print("=== Exercice 2.1 : Classement par épreuve et compétition ===")
+w = Window.partitionBy("competition_id", "epreuve").orderBy("temps_secondes")
+
+df_ranked = (
+    df_cleaned
+    .withColumn("position", row_number().over(w))
+    .withColumn("temps_premier", first("temps_secondes").over(w))
+    .withColumn("ecart_avec_premier", col("temps_secondes") - col("temps_premier"))
+    .withColumn("est_podium", when(col("position") <= 3, lit(True)).otherwise(lit(False)))
+    .select(
+        "athlete_id", "nom", "epreuve", "date_competition",
+        "temps_secondes", "position", "ecart_avec_premier", "est_podium"
+    )
+)
+df_ranked.show()
 
