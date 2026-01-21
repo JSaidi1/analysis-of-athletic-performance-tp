@@ -1,6 +1,6 @@
 from pyspark.sql import SparkSession, Window
 from pyspark.sql.functions import col, count, when, abs as abs_spark, coalesce, to_date, regexp_replace, trim, initcap, \
-    row_number, first, lit, lag, min, avg, ntile, percent_rank
+    row_number, first, lit, lag, min, avg, ntile, percent_rank, countDistinct
 
 print("=========== Initialisation ===========")
 spark = SparkSession.builder \
@@ -173,5 +173,35 @@ df_cat = (
 )
 df_cat.show()
 
+print("=== Exercice 2.4 : Polyvalence des nageurs ===")
+# Objectif : Identifier les nageurs les plus polyvalents (performants sur plusieurs styles)
+#
+# Attendu :
+#
+# Par athlète, calculer :
+#   nb_epreuves_differentes : nombre d'épreuves distinctes nagées
+#   nb_styles_differents : nombre de styles de nage différents
+#   meilleur_style : style où l'athlète a le meilleur classement moyen
+#   rang_moyen_toutes_epreuves : rang moyen sur toutes ses participations
+#   est_polyvalent : booléen (True si >= 3 styles différents)
+# Filtrer : Athlètes ayant participé à au moins 5 compétitions
 
+# Classement par épreuve
+w_rank = Window.partitionBy("epreuve").orderBy("temps_secondes")
 
+df_ranks = df_cleaned.withColumn("rang", row_number().over(w_rank))
+
+df_poly = (
+    df_ranks
+    .groupBy("athlete_id", "nom")
+    .agg(
+        countDistinct("epreuve").alias("nb_epreuves_differentes"),
+        countDistinct("nage").alias("nb_styles_differents"),
+        avg("rang").alias("rang_moyen_toutes_epreuves"),
+        countDistinct("competition_id").alias("nb_competitions")
+    )
+    .withColumn("est_polyvalent", col("nb_styles_differents") >= 3)
+    .filter(col("nb_competitions") >= 5)
+)
+
+df_poly.show()
