@@ -1,6 +1,6 @@
 from pyspark.sql import SparkSession, Window
 from pyspark.sql.functions import col, count, when, abs as abs_spark, coalesce, to_date, regexp_replace, trim, initcap, \
-    row_number, first, lit
+    row_number, first, lit, lag, min
 
 print("=========== Initialisation ===========")
 spark = SparkSession.builder \
@@ -114,7 +114,7 @@ print("=========== Partie 2 : Analyse avec Window Functions ===========")
 print("=== Exercice 2.1 : Classement par épreuve et compétition ===")
 w = Window.partitionBy("competition_id", "epreuve").orderBy("temps_secondes")
 
-df_ranked = (
+df_ranked_2_1 = (
     df_cleaned
     .withColumn("position", row_number().over(w))
     .withColumn("temps_premier", first("temps_secondes").over(w))
@@ -125,5 +125,31 @@ df_ranked = (
         "temps_secondes", "position", "ecart_avec_premier", "est_podium"
     )
 )
-df_ranked.show()
+df_ranked_2_1.show()
+
+print("=== Exercice 2.2 : Progression personnelle ===")
+# df = df.withColumn("ventes_mois_precedent", F.lag("ventes", 1).over(window_vendeur))\
+#         .withColumn("ventes_mois_suivant", F.lead("ventes", 1).over(window_vendeur))\
+#         .withColumn("variation_precedent", F.col("ventes") - F.lag("ventes", 1).over(window_vendeur))
+
+w = Window.partitionBy("athlete_id", "epreuve").orderBy("date_competition")
+
+#temps_precedent : temps de la compétition précédente
+#amelioration_secondes : temps_precedent - temps_actuel (positif = amélioration)
+#amelioration_pct : amélioration en pourcentage
+#meilleur_temps_perso : record personnel sur cette épreuve jusqu'à cette date
+#est_record_perso : booléen indiquant si c'est un nouveau record
+df_ranked_2_2 = (
+    df_cleaned
+    .withColumn("temps_precedent", lag("temps_secondes", 1).over(w))
+    .withColumn("amelioration_secondes", col("temps_precedent") - col("temps_secondes"))
+    .withColumn("amelioration_pct", col("amelioration_secondes") * 100 / col("temps_precedent"))
+    .withColumn("meilleur_temps_perso", min("temps_secondes").over(w))
+    .withColumn("meilleur_temps_perso", min("temps_secondes").over(w))
+    .withColumn("est_record_perso", col("meilleur_temps_perso") == col("temps_secondes"))
+)
+df_ranked_2_2.show()
+
+
+
 
