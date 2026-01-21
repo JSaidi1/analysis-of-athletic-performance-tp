@@ -1,6 +1,6 @@
 from pyspark.sql import SparkSession, Window
 from pyspark.sql.functions import col, count, when, abs as abs_spark, coalesce, to_date, regexp_replace, trim, initcap, \
-    row_number, first, lit, lag, min
+    row_number, first, lit, lag, min, avg, ntile, percent_rank
 
 print("=========== Initialisation ===========")
 spark = SparkSession.builder \
@@ -150,6 +150,28 @@ df_ranked_2_2 = (
 )
 df_ranked_2_2.show()
 
+print("=== Exercice 2.3 : Analyse par catégorie ===")
+# Objectif : Comparer chaque performance à la moyenne de sa catégorie
+#
+# Attendu :
+#
+# temps_moyen_categorie : temps moyen de la catégorie sur cette épreuve (sur toute la saison)
+# ecart_vs_moyenne : différence avec la moyenne (négatif = meilleur que la moyenne)
+# percentile_categorie : dans quel quartile se situe l'athlète (1-4)
+# rang_categorie : classement dans sa catégorie d'âge sur cette épreuve
+# top_10_pct : booléen indiquant si dans les 10% meilleurs de sa catégorie
+w_cat = Window.partitionBy("categorie_age", "epreuve")
+w_rank = Window.partitionBy("categorie_age", "epreuve").orderBy("temps_secondes")
+
+df_cat = (
+    df_cleaned
+    .withColumn("temps_moyen_categorie", avg("temps_secondes").over(w_cat))
+    .withColumn("ecart_vs_moyenne", col("temps_secondes") - col("temps_moyen_categorie"))
+    .withColumn("percentile_categorie", ntile(4).over(w_rank))
+    .withColumn("rang_categorie", row_number().over(w_rank) )
+    .withColumn("top_10_pct", percent_rank().over(w_rank) <= 0.10)
+)
+df_cat.show()
 
 
 
