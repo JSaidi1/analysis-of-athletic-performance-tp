@@ -1,6 +1,6 @@
 from pyspark.sql import SparkSession, Window
 from pyspark.sql.functions import col, count, when, abs as abs_spark, coalesce, to_date, regexp_replace, trim, initcap, \
-    row_number, first, lit, lag, min, avg, ntile, percent_rank, countDistinct
+    row_number, first, lit, lag, min, avg, ntile, percent_rank, countDistinct, desc
 
 print("=========== Initialisation ===========")
 spark = SparkSession.builder \
@@ -203,5 +203,73 @@ df_poly = (
     .withColumn("est_polyvalent", col("nb_styles_differents") >= 3)
     .filter(col("nb_competitions") >= 5)
 )
-
 df_poly.show()
+
+print("=== Exercice 2.5 : Tendance de performance ===")
+# Objectif : Calculer une moyenne mobile pour détecter les tendances
+#
+# Attendu :
+#
+# Pour chaque athlète sur son épreuve favorite (celle qu'il nage le plus)
+# moyenne_mobile_3comp : moyenne des temps sur les 3 dernières compétitions
+# tendance : "Amélioration", "Stable" ou "Dégradation"
+# Amélioration : temps actuel < moyenne mobile
+# Dégradation : temps actuel > moyenne mobile + 1 seconde
+# Stable : entre les deux
+# nb_competitions : nombre de compétitions de l'athlète sur cette épreuve
+# Épreuve favorite
+fav = (
+    df_cleaned
+    .groupBy("athlete_id", "epreuve")
+    .count()
+    .withColumn("rn", row_number().over(
+        Window.partitionBy("athlete_id").orderBy(desc("count"))
+    ))
+    .filter("rn = 1")
+    .select("athlete_id", "epreuve")
+)
+
+df_fav = df_cleaned.join(fav, ["athlete_id", "epreuve"])
+
+w = Window.partitionBy("athlete_id", "epreuve") \
+          .orderBy("date_competition") \
+          .rowsBetween(-2, 0)
+
+df_trend = (
+    df_fav
+    .withColumn("moyenne_mobile_3comp", avg("temps_secondes").over(w))
+    .withColumn(
+        "tendance",
+        when(col("temps_secondes") < col("moyenne_mobile_3comp"), "Amélioration")
+         .when(col("temps_secondes") > col("moyenne_mobile_3comp") + 1, "Dégradation")
+         .otherwise("Stable")
+    )
+)
+df_trend.show()
+
+print("=== Exercice 2.6 : Performance relative par pays ===")
+# Objectif : Comparer les athlètes à la performance moyenne de leur pays
+#
+# Attendu :
+#
+# meilleur_temps_pays : meilleur temps du pays sur cette épreuve
+# temps_moyen_pays : temps moyen du pays sur cette épreuve
+# rang_dans_pays : classement de l'athlète parmi ses compatriotes
+# ecart_vs_meilleur_pays : différence avec le meilleur de son pays
+# est_meilleur_pays : booléen (meilleur temps de son pays sur cette épreuve)
+w_pays = Window.partitionBy("pays", "epreuve")
+w_rank = Window.partitionBy("pays", "epreuve").orderBy("temps_secondes")
+
+df_pays = (
+    df_cleaned
+    .withColumn("meilleur_temps_pays", min("temps_secondes").over(w_pays))
+    .withColumn("temps_moyen_pays", avg("temps_secondes").over(w_pays))
+    .withColumn("rang_dans_pays", row_number().over(w_rank))
+    .withColumn("ecart_vs_meilleur_pays",
+        col("temps_secondes") - col("meilleur_temps_pays")
+    )
+    .withColumn("est_meilleur_pays",
+        col("rang_dans_pays") == 1
+    )
+)
+df_pays.show()
